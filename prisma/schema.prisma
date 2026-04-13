@@ -1,0 +1,454 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======================
+// ENUM'lar
+// ======================
+
+enum UserRole {
+  SUPER_ADMIN
+  BUSINESS_ADMIN
+  WAITER
+  KITCHEN
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIALING
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum TableStatus {
+  EMPTY
+  OCCUPIED
+  WAITING_PAYMENT
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  IYZICO
+  STRIPE
+  CASH
+}
+
+// ======================
+// İŞLETMELER (Tenants)
+// ======================
+
+model Tenant {
+  id       String           @id @default(cuid())
+  slug     String           @unique
+  name     String
+  logoUrl  String?
+  coverUrl String?
+  plan     SubscriptionPlan @default(FREE)
+  status   TenantStatus     @default(TRIAL)
+
+  // İletişim
+  contactEmail String
+  phone        String?
+  address      String?
+
+  // Ayarlar
+  currency String  @default("TRY")
+  taxRate  Float @default(8.0)
+  timezone String  @default("Europe/Istanbul")
+
+  // Tema
+  primaryColor String @default("#f97316")
+
+  // Özel domain (ör: flare.cafe-istanbul.com)
+  // İşletme bu alanı doldurur → DNS: CNAME flare → platform sunucusu
+  customDomain String? @unique
+
+  // Wi-Fi & Sosyal
+  wifiName     String?
+  wifiPassword String?
+  instagramUrl String?
+  facebookUrl  String?
+  twitterUrl   String?
+
+  // Çalışma saatleri (JSON)
+  workingHours Json?
+
+  // İyzico/Stripe bağlantısı
+  iyzicoApiKey    String?
+  iyzicoSecretKey String?
+  stripeAccountId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // İlişkiler
+  users          User[]
+  locations      Location[]
+  tables         Table[]
+  menuCategories MenuCategory[]
+  menuItems      MenuItem[]
+  orders         Order[]
+  payments       Payment[]
+  subscription   Subscription?
+
+  @@map("tenants")
+}
+
+// ======================
+// ABONELIKLER
+// ======================
+
+model Subscription {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  plan         SubscriptionPlan   @default(FREE)
+  status       SubscriptionStatus @default(TRIALING)
+  billingCycle BillingCycle       @default(MONTHLY)
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelledAt        DateTime?
+  trialEndsAt        DateTime?
+
+  // Stripe/İyzico abonelik ID
+  externalSubscriptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ======================
+// KULLANICILAR
+// ======================
+
+model User {
+  id       String  @id @default(cuid())
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name         String
+  email        String    @unique
+  passwordHash String?
+  pinHash      String?
+  role         UserRole  @default(WAITER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ======================
+// BÖLGELER / ALANLAR
+// ======================
+
+model Location {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String // "İç Mekan", "Teras", "Bahçe"
+  sortOrder Int    @default(0)
+
+  tables Table[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("locations")
+}
+
+// ======================
+// MASALAR
+// ======================
+
+model Table {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  number   Int
+  name     String? // "Masa 1", "VIP 2" vb.
+  capacity Int         @default(4)
+  status   TableStatus @default(EMPTY)
+  qrToken  String      @unique @default(cuid())
+
+  // Görsel pozisyon (drag-drop layout için)
+  posX Float @default(0)
+  posY Float @default(0)
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([locationId])
+  @@map("tables")
+}
+
+// ======================
+// MENÜ KATEGORİLERİ
+// ======================
+
+model MenuCategory {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Çok dilli isim: {"tr": "Başlangıçlar", "en": "Starters"}
+  name      Json
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+  imageUrl  String?
+
+  // Zaman kısıtlaması (sabah menüsü vb.)
+  availableFrom String? // "08:00"
+  availableTo   String? // "11:00"
+
+  menuItems MenuItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("menu_categories")
+}
+
+// ======================
+// MENÜ ÜRÜNLERİ
+// ======================
+
+model MenuItem {
+  id         String       @id @default(cuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  // Çok dilli: {"tr": "Americano", "en": "Americano"}
+  name        Json
+  description Json?
+  price       Float
+  imageUrl    String?
+
+  isAvailable     Boolean @default(true)
+  preparationTime Int? // dakika cinsinden
+
+  // Besin bilgisi
+  calories  Int?
+  // Alerjenler: ["GLUTEN", "MILK", "EGGS", ...]
+  allergens String[] @default([])
+  // Etiketler: ["VEGAN", "NEW", "RECOMMENDED", ...]
+  tags      String[] @default([])
+
+  sortOrder Int @default(0)
+
+  variants   ItemVariant[]
+  extras     ItemExtra[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("menu_items")
+}
+
+// ======================
+// VARYANTLAR
+// ======================
+
+model ItemVariant {
+  id     String   @id @default(cuid())
+  itemId String
+  item   MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  // Çok dilli: {"tr": "Boy", "en": "Size"}
+  name    Json
+  // [{"tr":"Küçük","en":"Small","price":0},{"tr":"Orta","en":"Medium","price":5}]
+  options Json
+
+  isRequired Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("item_variants")
+}
+
+// ======================
+// EKSTRALAR
+// ======================
+
+model ItemExtra {
+  id     String   @id @default(cuid())
+  itemId String
+  item   MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  // Çok dilli: {"tr": "Ekstra Sos", "en": "Extra Sauce"}
+  name       Json
+  price      Float
+  isRequired Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("item_extras")
+}
+
+// ======================
+// SİPARİŞLER
+// ======================
+
+model Order {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tableId  String
+  table    Table  @relation(fields: [tableId], references: [id], onDelete: Restrict)
+
+  // Müşteri anonim session
+  sessionToken String
+
+  status      OrderStatus @default(PENDING)
+  totalAmount Float       @default(0)
+  taxAmount   Float       @default(0)
+  tipAmount   Float       @default(0)
+  notes       String?
+
+  orderItems OrderItem[]
+  payments   Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tableId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// ======================
+// SİPARİŞ KALEMLERİ
+// ======================
+
+model OrderItem {
+  id      String   @id @default(cuid())
+  orderId String
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId  String
+  item    MenuItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  variantId String?
+  quantity  Int     @default(1)
+  unitPrice Float
+
+  // Seçilen varyant ve ekstralar (snapshot)
+  selectedVariant Json?
+  selectedExtras  Json?
+
+  notes  String?
+  status OrderItemStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([itemId])
+  @@map("order_items")
+}
+
+// ======================
+// ÖDEMELER
+// ======================
+
+model Payment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId  String
+  order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  provider              PaymentProvider @default(CASH)
+  amount                Float
+  currency              String          @default("TRY")
+  status                PaymentStatus   @default(PENDING)
+  providerTransactionId String?
+  receiptUrl            String?
+
+  // Bölünmüş ödeme: ödemeyi kimin yaptığı
+  payerEmail String?
+  payerPhone String?
+
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([status])
+  @@index([paidAt])
+  @@map("payments")
+}
