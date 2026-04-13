@@ -164,5 +164,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ---
 
-> **Created for the SaaS Solution Portfolio**
-> **QR Menu & Order v1.1** — © 2026
+> **Created from Emre Can AVCI**
+> **QR Menu & Order v1.0** — © 2026
