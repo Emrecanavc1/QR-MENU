@@ -3,7 +3,7 @@
 This project is an end-to-end SaaS (Software as a Service) solution that allows businesses (restaurants, cafes, hotels, etc.) to create and manage digital menus. Customers can scan QR codes at their tables to browse, order, and pay seamlessly.
 This document is designed to detail the code structure, technical architecture, and overall objective of the QR Menu and Order SaaS platform.
 
-![Version](https://img.shields.io/badge/Version-1.1-blue?style=flat)
+![Version](https://img.shields.io/badge/Version-1.0-blue?style=flat)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat&logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white)
